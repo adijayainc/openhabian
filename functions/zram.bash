@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
 
+install_zram_code() {
+  local ZRAMGIT=https://github.com/mstormi/openhabian-zram
+  local OVERLAYFSGIT=https://github.com/kmxz/overlayfs-tools
+  local TAG=openhabian_v1.6
+  cond_redirect apt-get install -y -q --no-install-recommends make
+
+  mkdir -p "$1"
+  git clone -q "$OVERLAYFSGIT" "$1"
+
+  git clone -q --branch "$TAG" "$ZRAMGIT" "$1"
+}
+
 init_zram_mounts() {
   local introtext="You are about to activate the ZRAM feature.\\nBe aware you do this at your own risk of data loss.\\nPlease check out the \"ZRAM status\" thread at https://community.openhab.org/t/zram-status/80996 before proceeding."
   local text_lowmem="Your system has less than 1 GB of RAM. It is definitely NOT recommended to run ZRAM (AND openHAB) on your box. If you proceed now you will do so at your own risk !"
+  local ZRamInstallLocation
+
   if [ "$1" == "install" ]; then
     if [ -z "$UNATTENDED" ]; then
       # display warn disclaimer and point to ZRAM status thread on forum
@@ -13,19 +27,18 @@ init_zram_mounts() {
       fi
     fi
 
-    local ZRAMGIT=https://github.com/mstormi/openhabian-zram
-    local TAG=openhabian_v1.5
-    TMP="$(mktemp -d /tmp/openhabian.XXXXX)"
+    ZRamInstallLocation=/opt/zram
 
-    /usr/bin/git clone -q --branch "$TAG" "$ZRAMGIT" "$TMP"
-    cond_redirect apt-get install -y -q --no-install-recommends make
-    cd "$TMP" || return 1
+    install_zram_code "$ZRamInstallLocation"
+    cd "$ZRamInstallLocation"/overlayfs-tools
+    make
+    cd "$ZRamInstallLocation" || return 1
     /bin/sh ./install.sh
     /usr/bin/install -m 644 "${BASEDIR:=/opt/openhabian}"/includes/ztab /etc/ztab
-    service zram-config start
-    rm -rf "$TMP"
+
+    cond_redirect systemctl start zram-config
   else
-    service zram-config stop
+    cond_redirect systemctl stop zram-config
     /bin/sh /usr/local/share/zram-config/uninstall.sh
     rm -f /etc/ztab
   fi
